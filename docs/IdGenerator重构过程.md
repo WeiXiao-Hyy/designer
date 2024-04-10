@@ -107,8 +107,7 @@ public class RandomIdGenerator implements LogTraceIdGenerator {
         String substrOfHostName = getLastfieldOfHostName();
         long currentTimeMillis = System.currentTimeMillis();
         String randomString = generateRandomAlphameric(8);
-        String id = String.format("%s-%d-%s",
-                substrOfHostName, currentTimeMillis, randomString);
+        String id = String.format("%s-%d-%s", substrOfHostName, currentTimeMillis, randomString);
         return id;
     }
     private String getLastfieldOfHostName() {
