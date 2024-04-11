@@ -75,8 +75,7 @@ public class IdGenerator {
 
 > 命名一
 
-接口实现类设计为`LogTraceIdGenerator`, 如果未来存在用户(`UserIdGenerator`)，订单(`OrderIdGenerator`)等ID生成器,其实现类不能进行替换，所以
-让这三个类去实现IdGenerator接口，实际上没有意义。
+接口实现类设计为`LogTraceIdGenerator`, 如果未来存在用户(`UserIdGenerator`)，订单(`OrderIdGenerator`)等ID生成器,其实现类不能进行替换，所以让这三个类去实现IdGenerator接口，实际上没有意义。
 
 > 命名二
 
@@ -88,8 +87,7 @@ public class IdGenerator {
 
 > 最终方案
 
-抽象出两个接口，一个是`IdGenerator`, 一个是`LogTraceIdGenerator`, `LogTraceIdGenerator`继承`IdGenerator`, 实现类实现接口`LogTraceIdGenerator`
-, 命名为`RandomIdGenerator`, 这样实现类可以复用到多个业务模块，比如用户，订单，OAuth等等。
+抽象出两个接口，一个是`IdGenerator`, 一个是`LogTraceIdGenerator`, `LogTraceIdGenerator`继承`IdGenerator`, 实现类实现接口`LogTraceIdGenerator`, 命名为`RandomIdGenerator`, 这样实现类可以复用到多个业务模块，比如用户，订单，OAuth等等。
 
 
 基于以上优化得到如下代码:
@@ -243,11 +241,9 @@ protected String generateRandomAlphameric(int length);
 2. generator功能定义为"只包含数字、大小写字母和中划线的唯一ID"，那么不仅需要测试ID的唯一性，还需要测试ID的组成是否符合预期;
 3. generator功能定义为"生成唯一ID，格式为{hostname}-{时间戳}-{8位随机数字}"，那么不仅需要测试ID的唯一性，还需要测试ID的组成是否符合预期;
 
-对于`getLastfieldOfHostName()`实际上这个函数不容易测试，因为它调用了一个静态函数，并且这个静态函数依赖运行环境，但是这个函数的实现非常简单，
-所以我认为不需要为其单独写单元测试。
+对于`getLastfieldOfHostName()`实际上这个函数不容易测试，因为它调用了一个静态函数，并且这个静态函数依赖运行环境，但是这个函数的实现非常简单, 所以我认为不需要为其单独写单元测试。
 
-基于以上分析，写出下述的单元测试代码，同时也观察到如果传入的字符串为null或"",`testGetLastSubstrSplittedByDot`函数会抛出异常，也验证了写
-单元测试可以帮助我们review自己的代码，同时提高代码的健壮性。
+基于以上分析，写出下述的单元测试代码，同时也观察到如果传入的字符串为null或"",`testGetLastSubstrSplittedByDot`函数会抛出异常，也验证了写单元测试可以帮助我们review自己的代码，同时提高代码的健壮性。
 
 ```java
 @Test
