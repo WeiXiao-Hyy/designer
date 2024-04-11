@@ -107,7 +107,8 @@ public class RandomIdGenerator implements LogTraceIdGenerator {
         String substrOfHostName = getLastfieldOfHostName();
         long currentTimeMillis = System.currentTimeMillis();
         String randomString = generateRandomAlphameric(8);
-        String id = String.format("%s-%d-%s", substrOfHostName, currentTimeMillis, randomString);
+        String id = String.format("%s-%d-%s", 
+                substrOfHostName, currentTimeMillis, randomString);
         return id;
     }
     private String getLastfieldOfHostName() {
@@ -141,4 +142,156 @@ public class RandomIdGenerator implements LogTraceIdGenerator {
     }
 }
 ```
+
+### 可测试性
+
+- generate函数为静态函数，不好写测试代码(除非用PowerMock);
+- generate函数依赖时间函数、随机函数，机器的hostname所以可测试性不好;
+
+> 将依赖环境或其他的函数剥离出来，单独测试其他部分 
+
+将`getLastfieldOfHostName`分为`hostname`部分和`getLastSubstrSplittedByDot`单独测试`getLastSubstrSplittedByDot`即可。
+
+> 将不好测试的private函数可以转化为protected+@VisibleForTesting
+
+- protected的作用：可以直接在单元测试中通过对象来调用两个函数进行测试。
+- @VisibleForTesting: 只起到标识作用，只是为了测试。
+
+基于以上优化, 得到下述代码:
+
+```java
+public class RandomIdGenerator implements LogTraceIdGenerator {
+    
+    @Override
+    public String generate() {
+        String substrOfHostName = getLastfieldOfHostName();
+        long currentTimeMillis = System.currentTimeMillis();
+        String randomString = generateRandomAlphameric(8);
+        String id = String.format("%s-%d-%s",
+                substrOfHostName, currentTimeMillis, randomString);
+        return id;
+    }
+    
+    private String getLastfieldOfHostName() {
+        String substrOfHostName = null;
+        try {
+            String hostName = InetAddress.getLocalHost().getHostName();
+            substrOfHostName = getLastSubstrSplittedByDot(hostName);
+        } catch (UnknownHostException e) {
+            logger.warn("Failed to get the host name.", e);
+        }
+        return substrOfHostName;
+    }
+    
+    @VisibleForTesting
+    protected String getLastSubstrSplittedByDot(String hostName) {
+        String[] tokens = hostName.split("\\.");
+        String substrOfHostName = tokens[tokens.length - 1];
+        return substrOfHostName;
+    }
+    
+    @VisibleForTesting
+    protected String generateRandomAlphameric(int length) {
+        char[] randomChars = new char[length];
+        int count = 0;
+        Random random = new Random();
+        while (count < length) {
+            int maxAscii = 'z';
+            int randomAscii = random.nextInt(maxAscii);
+            boolean isDigit = randomAscii >= '0' && randomAscii <= '9';
+            boolean isUppercase = randomAscii >= 'A' && randomAscii <= 'Z';
+            boolean isLowercase = randomAscii >= 'a' && randomAscii <= 'z';
+            if (isDigit || isUppercase || isLowercase) {
+                randomChars[count] = (char) (randomAscii);
+                ++count;
+            }
+        }
+        return new String(randomChars);
+    }
+}
+```
+
+### 完善单元测试
+
+基于上述重构，目前需要测试的函数如下:
+
+```java
+public String generate();
+
+private String getLastfieldOfHostName();
+
+@VisibleForTesting
+protected String getLastSubstrSplittedByDot(String hostName);
+
+@VisibleForTesting
+protected String generateRandomAlphameric(int length);
+```
+
+对于后两个函数逻辑较为复杂, 是我们测试的重点, 单元测试代码如下:
+
+1. 函数命名 testgetLastSubstrSplittedByDot_nullOrEmpty(): 团队统一即可,较推荐该种写法;
+2. 注意各种边界条件, 字符串可能为null或"";
+3. 有时还需要测试函数的执行次数,而不仅仅是返回结果的某个属性;
+
+对于generate()函数，是唯一暴露给外部使用的public方法，其依赖主机名称、随机函数、时间函数，该如何编写测试函数呢？
+
+> 注意
+
+写单元测试的时候，测试对象是函数定义的功能，而非具体的实现逻辑。这样才能做到，即使函数的实现逻辑改变了，单元测试用例仍然可以工作。
+
+1. generator功能定义为"生成一个随机唯一ID"，那么需要测试多次调用generate生成的ID是否唯一;
+2. generator功能定义为"只包含数字、大小写字母和中划线的唯一ID"，那么不仅需要测试ID的唯一性，还需要测试ID的组成是否符合预期;
+3. generator功能定义为"生成唯一ID，格式为{hostname}-{时间戳}-{8位随机数字}"，那么不仅需要测试ID的唯一性，还需要测试ID的组成是否符合预期;
+
+对于`getLastfieldOfHostName()`实际上这个函数不容易测试，因为它调用了一个静态函数，并且这个静态函数依赖运行环境，但是这个函数的实现非常简单，
+所以我认为不需要为其单独写单元测试。
+
+基于以上分析，写出下述的单元测试代码，同时也观察到如果传入的字符串为null或"",`testGetLastSubstrSplittedByDot`函数会抛出异常，也验证了写
+单元测试可以帮助我们review自己的代码，同时提高代码的健壮性。
+
+```java
+@Test
+public void testGetLastSubstrSplittedByDot() {
+    RandomIdGenerator idGenerator = new RandomIdGenerator();
+    String actualSubstr = idGenerator.getLastSubstrSplittedByDot("field1.field2.field3");
+    Assert.assertEquals("field3", actualSubstr);
+    actualSubstr = idGenerator.getLastSubstrSplittedByDot("field1");
+    Assert.assertEquals("field1", actualSubstr);
+    actualSubstr = idGenerator.getLastSubstrSplittedByDot("field1#field2#field3");
+    Assert.assertEquals("field1#field2#field3", actualSubstr);
+}
+
+// 此单元测试会失败，因为我们在代码中没有处理hostName为null或空字符串的情况
+@Test
+public void testGetLastSubstrSplittedByDot_nullOrEmpty() {
+    RandomIdGenerator idGenerator = new RandomIdGenerator();
+    String actualSubstr = idGenerator.getLastSubstrSplittedByDot(null);
+    Assert.assertNull(actualSubstr);
+    actualSubstr = idGenerator.getLastSubstrSplittedByDot("");
+    Assert.assertEquals("", actualSubstr);
+}
+
+@Test
+public void testGenerateRandomAlphameric() {
+    RandomIdGenerator idGenerator = new RandomIdGenerator();
+    String actualRandomString = idGenerator.generateRandomAlphameric(6);
+    Assert.assertNotNull(actualRandomString);
+    Assert.assertEquals(6, actualRandomString.length());
+    for (char c : actualRandomString.toCharArray()) {
+        Assert.assertTrue(('0' <= c && c <= '9') || ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z'));
+    }
+}
+
+// 此单元测试会失败，因为我们在代码中没有处理length<=0的情况
+@Test
+public void testGenerateRandomAlphameric_lengthEqualsOrLessThanZero() {
+    RandomIdGenerator idGenerator = new RandomIdGenerator();
+    String actualRandomString = idGenerator.generateRandomAlphameric(0);
+    Assert.assertEquals("", actualRandomString);
+    actualRandomString = idGenerator.generateRandomAlphameric(-1);
+    Assert.assertNull(actualRandomString);
+}
+```
+
+### 添加注释
 
